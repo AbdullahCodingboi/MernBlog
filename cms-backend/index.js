@@ -3,10 +3,11 @@ import dotenv from 'dotenv';
 import connectDB from './config/db.js';
 import blogRoutes from './routes/blog.js';
 import authRoutes from './routes/auth.js';
-
+import cors from "cors";
 dotenv.config();
 connectDB()
 const app=express()
+app.use(cors());
 app.use(express.json());
 
 // Mount the auth routes under /api/auth
