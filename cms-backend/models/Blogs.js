@@ -29,6 +29,13 @@ const commentSchema=new mongoose.Schema({
   content:{type:String,required:true},
   createdAt:{type:Date,default:Date.now},
 })
+const imageSchema = new mongoose.Schema({
+  imageUrl: { type: String, required: true },   // always store the final URL from Cloudinary
+  publicId: { type: String, required: false },   // Cloudinary public ID for management
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Blog = mongoose.model("Blog", blogSchema);
 const Comment = mongoose.model("Comment", commentSchema);
-export { Blog, Comment };
+const Image = mongoose.model("Image", imageSchema);
+export { Blog, Comment, Image };
