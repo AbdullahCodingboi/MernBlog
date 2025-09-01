@@ -1,34 +1,73 @@
 import {Blog,Comment,Image} from "../models/Blogs.js";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
+import multer from "multer";
 dotenv.config();
+const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+  // Check if the file is an image
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
+  }
+};
 
+// Create multer instance with configuration
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  }
+});
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
-export const CreateBlog=async (req,res)=>{
-    try{
-        const {title,content,tags} =req.body
-        const blog=await Blog.create({
-            title,
-            content,
-            tags,
-            author:req.user.id
-        })
-        res.status(201).json({ message: "Blog created", blog });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+export const CreateBlog = async (req, res) => {
+  try {
+    console.log('Full request body:', req.body);
+    console.log('Subtitle value:', req.body.subtitle);
+    console.log('Type of subtitle:', typeof req.body.subtitle);
     
-}
-export const FetchAllBlogs=async(req,res)=>{
-    try{
-        const blogs=await Blog.find().populate("author", "username email").sort({createdAt:-1})
-        res.json(blogs)
-    }catch (err) {
-    res.status(500).json({ error: err.message });
+    // Simple approach - no destructuring
+    const blogData = {
+      title: req.body.title,
+      content: req.body.content,
+      tags: req.body.tags,
+      author: req.user.id,
+    };
+    
+    // Only add optional fields if they exist
+    if (req.body.subtitle) {
+      blogData.subtitle = req.body.subtitle;
+    }
+    
+    if (req.body.readTime) {
+      blogData.estimatedReadingTime = req.body.readTime;
+    }
+    
+    if (req.body.featuredImage) {
+      blogData.featuredImage = req.body.featuredImage;
+    }
+    
+    console.log('Blog data to create:', blogData);
+    
+    const blog = await Blog.create(blogData);
+
+    res.status(201).json({ 
+      success: true,
+      message: "Blog created successfully", 
+      blog 
+    });
+  } catch (err) {
+    console.error('Create blog error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
   }
 }
 export const GetBlog=async (req,res)=>{
@@ -62,41 +101,61 @@ export const AddComment=async(req,res)=>{
 }
 export const AddImage = async (req, res) => {
   try {
-    console.log("Request body:", req.body); // Debug log
-    const { imageBase64, imageUrl } = req.body;
-
-    if (!imageBase64 && !imageUrl)
-      return res.status(400).json({ message: "Image data or URL is required" });
+    console.log("Request body:", req.body); // Debug log for JSON fields
+    console.log("File:", req.file);        // Debug log for uploaded file
 
     let uploadResult;
 
-    if (imageBase64) {
-      // Upload base64 image to Cloudinary
-      uploadResult = await cloudinary.uploader.upload(imageBase64, {
+    // 1️⃣ Local file uploaded via Multer
+    if (req.file) {
+      // Upload to Cloudinary using a Promise for async/await
+      uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "blog_images" },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result);
+          }
+        );
+        stream.end(req.file.buffer); // send the file buffer
+      });
+    }
+
+    // 2️⃣ Base64 image sent in JSON
+    else if (req.body.imageBase64) {
+      uploadResult = await cloudinary.uploader.upload(req.body.imageBase64, {
         folder: "blog_images",
       });
-    } else {
-      // Use URL directly - generate a unique identifier since no Cloudinary public_id
-      uploadResult = { 
-        secure_url: imageUrl, 
-        public_id: `direct_upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` 
+    }
+
+    // 3️⃣ Image URL provided directly
+    else if (req.body.imageUrl) {
+      uploadResult = {
+        secure_url: req.body.imageUrl,
+        public_id: `direct_upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       };
     }
 
+    else {
+      return res.status(400).json({ message: "Image file, Base64, or URL is required" });
+    }
+
+    // Save the image info in MongoDB
     const image = await Image.create({
       imageUrl: uploadResult.secure_url,
       publicId: uploadResult.public_id,
       createdAt: new Date(),
     });
 
-    // Return only the image URL
-    res.status(201).json({ 
+    // Respond with the image info
+    res.status(201).json({
       message: "Image added",
-      imageId:image._id ,
-      imageUrl: image.imageUrl ,
-      
+      imageId: image._id,
+      imageUrl: image.imageUrl,
     });
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -132,4 +191,27 @@ export const DeleteImage = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 
+}
+export const Likes=async (req,res)=>{
+  const blogid=req.params.id
+    console.log("typeof blogid:", typeof blogid, "value:", blogid);
+ const userid = req.user.id;
+
+  try{
+    const blog=await Blog.findById(blogid)
+    if(!blog) return res.status(404).json({ error: "Blog not found" });
+    let action=''
+    if(blog.likes.includes(userid)){
+      blog.likes.pull(userid)
+      action='unliked'
+    }
+    else{
+      blog.likes.push(userid)
+      action='liked'
+    }
+    blog.save()
+    res.json({ action, likesCount: blog.likes.length });
+  }catch(err){
+    return  res.status(500).json(err)
+  }
 }
