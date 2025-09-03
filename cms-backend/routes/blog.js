@@ -7,10 +7,12 @@ import { AddImage } from "../controllers/blogController.js";
 import { DeleteImage } from "../controllers/blogController.js";
 import { Likes } from "../controllers/blogController.js";
 import { protect } from "../middleware/authMiddleware.js";
+import { GetAllBlog } from "../controllers/blogController.js";
 import multer from "multer";
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() })
 router.post("/",protect,  CreateBlog); 
+router.get("/", GetAllBlog);
 // router.get("/", FetchAllBlogs);
 router.get("/:id", GetBlog);
 router.post("/:id/comments", protect, AddComment);
