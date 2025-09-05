@@ -18,6 +18,10 @@ const blogSchema = new mongoose.Schema({
     ref: "User",
     required: true
   },
+  category:{
+    type: String,
+    required: true
+  },
   tags: [String],
   comments: [{ type: mongoose.Schema.Types.ObjectId, ref: "Comment" }],
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
